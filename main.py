@@ -29,7 +29,7 @@ def add_cuttings(image, point_a, point_b):
     start_point = (point_a[0], point_a[1])
     end_point = (point_b[0], point_b[1])
     color = (0, 255, 0)
-    thickness = 2
+    thickness = 1
     cv.line(image, start_point, end_point, color, thickness)
 
 
@@ -61,7 +61,7 @@ async def make_cuts(node: MyNode, image, tree, all_points, point_nodes, node_poi
     if len(all_children) > 0:
         for curr_node in all_curr_nodes:
             # find the closest points
-            query_result = tree.query(node_points[curr_node], 10, return_distance=False)
+            query_result = tree.query(node_points[curr_node], len(node_points[curr_node])//2 + 1, return_distance=False)
             min_length_for_parent = float('inf')
             min_length_point_a = []
             min_length_point_b = []
@@ -80,7 +80,6 @@ async def make_cuts(node: MyNode, image, tree, all_points, point_nodes, node_poi
                             min_length_point_b = all_points[point_id]
                             connect_to_id = need_node.idx
                             # if we found something - that's end for this point
-                            break
             if len(min_length_point_b) > 0:
                 add_cuttings(image, min_length_point_a, min_length_point_b)
                 already_has.add((curr_node.idx, connect_to_id))
@@ -88,10 +87,10 @@ async def make_cuts(node: MyNode, image, tree, all_points, point_nodes, node_poi
 
 async def main():
     # choose image here
-    image = cv.imread("test_files/input/fine.png")
+    image = cv.imread("test_files/input/img.png")
     contours, hierarchy = read_points(image)
     # prepare some data for main algorithm
-    root, all_nodes = create_graph(contours, hierarchy, precision=0.001)
+    root, all_nodes = create_graph(contours, hierarchy, precision=0.0001)
     all_points = []
     point_node = {}
     node_points = {}
@@ -113,7 +112,7 @@ async def main():
         await asyncio.gather(*[make_cuts(n, image, tree, all_points, point_node, node_points) for n in root])
 
     # choose output here
-    cv.imwrite('test_files/output/res2.jpeg', image)
+    cv.imwrite('test_files/output/res4.jpeg', image)
 
 
 if __name__ == '__main__':
