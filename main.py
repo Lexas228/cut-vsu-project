@@ -112,7 +112,7 @@ async def main():
         await asyncio.gather(*[make_cuts(n, image, tree, all_points, point_node, node_points) for n in root])
 
     # choose output here
-    cv.imwrite('test_files/output/res4.jpeg', image)
+    cv.imwrite('test_files/output/res.jpeg', image)
 
 
 if __name__ == '__main__':
