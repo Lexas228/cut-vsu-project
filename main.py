@@ -60,11 +60,13 @@ async def make_cuts(node: MyNode, image, tree, all_points, point_nodes, node_poi
     await asyncio.gather(*[make_cuts(n, image, tree, all_points, point_nodes, node_points) for n in all_children])
     if len(all_children) > 0:
         for curr_node in all_curr_nodes:
-            query_result = tree.query(node_points[curr_node], 7, return_distance=False)
+            # find the closest points
+            query_result = tree.query(node_points[curr_node], 10, return_distance=False)
             min_length_for_parent = float('inf')
             min_length_point_a = []
             min_length_point_b = []
             connect_to_id = 0
+            # take all curr node points and finding the smallest distance
             for i in range(0, len(curr_node.points)):
                 pnt = curr_node.points[i]
                 for point_id in query_result[i]:
@@ -77,14 +79,18 @@ async def make_cuts(node: MyNode, image, tree, all_points, point_nodes, node_poi
                             min_length_point_a = pnt[0]
                             min_length_point_b = all_points[point_id]
                             connect_to_id = need_node.idx
+                            # if we found something - that's end for this point
+                            break
             if len(min_length_point_b) > 0:
                 add_cuttings(image, min_length_point_a, min_length_point_b)
                 already_has.add((curr_node.idx, connect_to_id))
 
 
 async def main():
+    # choose image here
     image = cv.imread("test_files/input/fine.png")
     contours, hierarchy = read_points(image)
+    # prepare some data for main algorithm
     root, all_nodes = create_graph(contours, hierarchy)
     all_points = []
     point_node = {}
@@ -96,11 +102,17 @@ async def main():
             all_points.append(p)
             point_node[p] = node
             node_points[node].append(p)
+    # creating tree
     tree = KDTree(all_points)
+    # call main algorithm
+    # this check may be reduced but cv read some useless contours
     if len(root) == 0:
-        await asyncio.gather(*[make_cuts(n, image, tree, all_points, point_node, node_points) for n in root[0].children.values()])
+        await asyncio.gather(
+            *[make_cuts(n, image, tree, all_points, point_node, node_points) for n in root[0].children.values()])
     else:
         await asyncio.gather(*[make_cuts(n, image, tree, all_points, point_node, node_points) for n in root])
+
+    # choose output here
     cv.imwrite('res.jpeg', image)
 
 
