@@ -33,11 +33,11 @@ def add_cuttings(image, point_a, point_b):
     cv.line(image, start_point, end_point, color, thickness)
 
 
-def create_graph(contours, hierarchy):
+def create_graph(contours, hierarchy, precision=0.001):
     all_nodes = {}
     without_parent = []
     for idx, c in enumerate(contours):
-        epsilon = 0.001 * cv.arcLength(c, True)
+        epsilon = precision * cv.arcLength(c, True)
         # approximate the contour
         c = cv.approxPolyDP(c, epsilon, True)
         all_nodes[idx] = (MyNode(c, idx, (0, 0)))
@@ -91,7 +91,7 @@ async def main():
     image = cv.imread("test_files/input/fine.png")
     contours, hierarchy = read_points(image)
     # prepare some data for main algorithm
-    root, all_nodes = create_graph(contours, hierarchy)
+    root, all_nodes = create_graph(contours, hierarchy, precision=0.001)
     all_points = []
     point_node = {}
     node_points = {}
@@ -113,7 +113,7 @@ async def main():
         await asyncio.gather(*[make_cuts(n, image, tree, all_points, point_node, node_points) for n in root])
 
     # choose output here
-    cv.imwrite('res.jpeg', image)
+    cv.imwrite('test_files/output/res2.jpeg', image)
 
 
 if __name__ == '__main__':
