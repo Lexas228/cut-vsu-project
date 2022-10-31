@@ -2,14 +2,12 @@ import asyncio
 import math
 
 import cv2 as cv
-import numpy as np
-from rtree import index
+from sklearn.neighbors import KDTree
 
 
 class MyNode:
     def __init__(self, points, idx, center):
         self.points = points
-        #self.sorted_points = np.sort(points, axis=0)
         self.children = {}
         self.parent = None
         self.idx = idx
@@ -31,21 +29,15 @@ def add_cuttings(image, point_a, point_b):
     start_point = (point_a[0], point_a[1])
     end_point = (point_b[0], point_b[1])
     color = (0, 255, 0)
-    thickness = 1
+    thickness = 2
     cv.line(image, start_point, end_point, color, thickness)
-
-
-def print_points(points):
-    for p in points:
-        print(p, end=" ")
-    print()
 
 
 def create_graph(contours, hierarchy):
     all_nodes = {}
     without_parent = []
     for idx, c in enumerate(contours):
-        epsilon = 0.0034 * cv.arcLength(c, True)
+        epsilon = 0.001 * cv.arcLength(c, True)
         # approximate the contour
         c = cv.approxPolyDP(c, epsilon, True)
         all_nodes[idx] = (MyNode(c, idx, (0, 0)))
@@ -56,46 +48,34 @@ def create_graph(contours, hierarchy):
             all_nodes[parent_index].children[i] = all_nodes[i]
         else:
             without_parent.append(all_nodes[i])
-    return without_parent
+    return without_parent, all_nodes
 
 
-
-async def make_cuts(node: MyNode, image):
-    idx2d = index.Index()
-    id_one = 0
-    point_nodes = {}
-    point_ids = {}
-    ids_point = {}
-    all_curr_nodes = [node]
+async def make_cuts(node: MyNode, image, tree, all_points, point_nodes, node_points):
+    already_has = set()
     all_children = node.children.values()
+    all_curr_nodes = [node]
     for n in all_children:
         all_curr_nodes.append(n)
-    for curr_node in all_curr_nodes:
-        for i in range(0, len(curr_node.points)):
-            pnt = curr_node.points[i]
-            idx2d.insert(id_one, coordinates=(pnt[0][0], pnt[0][1]))
-            point_nodes[id_one] = curr_node
-            point_ids[id_one] = pnt
-            ids_point[(pnt[0][0], pnt[0][1])] = id_one
-            id_one += 1
-    already_has = set()
-    await asyncio.gather(*[make_cuts(n, image) for n in all_children])
+    await asyncio.gather(*[make_cuts(n, image, tree, all_points, point_nodes, node_points) for n in all_children])
     if len(all_children) > 0:
         for curr_node in all_curr_nodes:
+            query_result = tree.query(node_points[curr_node], 7, return_distance=False)
             min_length_for_parent = float('inf')
             min_length_point_a = []
             min_length_point_b = []
             connect_to_id = 0
             for i in range(0, len(curr_node.points)):
                 pnt = curr_node.points[i]
-                for point_id in idx2d.nearest((pnt[0][0], pnt[0][1]), 13):
-                    need_node = point_nodes[point_id]
+                for point_id in query_result[i]:
+                    need_point = all_points[point_id]
+                    need_node = point_nodes[need_point]
                     if need_node.idx != curr_node.idx and (need_node.idx, curr_node.idx) not in already_has:
-                        curr_length = get_length(pnt[0], point_ids[point_id][0])
+                        curr_length = get_length(pnt[0], all_points[point_id])
                         if min_length_for_parent > curr_length:
                             min_length_for_parent = curr_length
                             min_length_point_a = pnt[0]
-                            min_length_point_b = point_ids[point_id][0]
+                            min_length_point_b = all_points[point_id]
                             connect_to_id = need_node.idx
             if len(min_length_point_b) > 0:
                 add_cuttings(image, min_length_point_a, min_length_point_b)
@@ -103,24 +83,25 @@ async def make_cuts(node: MyNode, image):
 
 
 async def main():
-    image = cv.imread("fine.png")
+    image = cv.imread("test_files/input/fine.png")
     contours, hierarchy = read_points(image)
-    root = create_graph(contours, hierarchy)
-    await asyncio.gather(*[make_cuts(n, image) for n in root[0].children.values()])
-    # for n in root[0].children.values():
-    #     await make_cuts(n, image)
-        # for child in root[0].children.values():
-    #     make_cuts(child, image)
+    root, all_nodes = create_graph(contours, hierarchy)
+    all_points = []
+    point_node = {}
+    node_points = {}
+    for node in all_nodes.values():
+        node_points[node] = []
+        for point in node.points:
+            p = (point[0][0], point[0][1])
+            all_points.append(p)
+            point_node[p] = node
+            node_points[node].append(p)
+    tree = KDTree(all_points)
+    if len(root) == 0:
+        await asyncio.gather(*[make_cuts(n, image, tree, all_points, point_node, node_points) for n in root[0].children.values()])
+    else:
+        await asyncio.gather(*[make_cuts(n, image, tree, all_points, point_node, node_points) for n in root])
     cv.imwrite('res.jpeg', image)
-    # for c in range(1, len(contours)):
-    #     for p in range(0, len(contours[c]), max(len(contours[c]) // 13, 1)):
-    #         idx2d.insert(id_one, coordinates=(contours[c][p][0][0], contours[c][p][0][1]))
-    #         id_one += 1
-    #
-    # for c in range(1, len(contours)):
-    #     for p in range(0, len(contours[c]), max(len(contours[c]) // 13, 1)):
-    #         for j in idx2d.nearest(coordinates=(contours[c][p][0][0], contours[c][p][0][1]), num_results=3):
-    #             pass
 
 
 if __name__ == '__main__':
